@@ -49,30 +49,36 @@ void process_task(Image *original, int image_id, int transformation) {
         case 0:
             result = image_flip_horizontal(&output, IMAGE_GRAYSCALE);
             sprintf(filename,
-                    "img_out/Test%d_HorizontalGray.bmp", image_id);
+                    "images/output/Test%d_HorizontalGray.bmp", image_id);
             break;
 
         case 1:
             result = image_flip_horizontal(&output, IMAGE_RGB);
             sprintf(filename,
-                    "img_out/Test%d_HorizontalRGB.bmp", image_id);
+                    "images/output/Test%d_HorizontalRGB.bmp", image_id);
             break;
 
         case 2:
             result = image_flip_vertical(&output, IMAGE_GRAYSCALE);
             sprintf(filename,
-                    "img_out/Test%d_VerticalGray.bmp", image_id);
+                    "images/output/Test%d_VerticalGray.bmp", image_id);
             break;
 
         case 3:
             result = image_flip_vertical(&output, IMAGE_RGB);
             sprintf(filename,
-                    "img_out/Test%d_VerticalRGB.bmp", image_id);
+                    "images/output/Test%d_VerticalRGB.bmp", image_id);
             break;
     }
 
     if (result) {
-        bmp_write(&output, filename);
+        if (!bmp_write(&output, filename)) {
+            printf("Failed to save: %s\n", filename);
+        }
+    }
+    else {
+        printf("Transformation failed: image %d, task %d\n",
+               image_id, transformation);
     }
 
     image_free(&output);
@@ -91,7 +97,7 @@ int main() {
                 #pragma omp task firstprivate(i)
                 {
                     char input[100];
-                    sprintf(input, "img_in/img%d.bmp", i);
+                    sprintf(input, "images/input/img%d.bmp", i);
 
                     Image original;
 
