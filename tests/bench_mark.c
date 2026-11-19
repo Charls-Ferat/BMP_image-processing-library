@@ -6,6 +6,7 @@
 
 #define NUM_IMAGES  10
 #define NUM_THREADS 5
+#define BLUR_KERNEL 9   // Same size as the kernel in transformaciones.h
 
 typedef int (*TransformFn)(Image*, ImageFormat);
 
@@ -15,6 +16,10 @@ typedef struct {
     const char* name;
 } Transform;
 
+static int blur_wrapper(Image* image, ImageFormat format){
+    return image_blur(image, format, BLUR_KERNEL);
+}
+
 static const Transform TRANSFORMS[] = {
     { image_flip_horizontal, IMAGE_GRAYSCALE, "HorizontalGray" },
     { image_flip_horizontal, IMAGE_RGB,       "HorizontalRGB"  },
@@ -23,7 +28,9 @@ static const Transform TRANSFORMS[] = {
     { image_derX,            IMAGE_GRAYSCALE, "DerXGray"       },
     { image_derX,            IMAGE_RGB,       "DerXRGB"        },
     { image_derY,            IMAGE_GRAYSCALE, "DerYGray"       },
-    { image_derY,            IMAGE_RGB,       "DerYRGB"        }
+    { image_derY,            IMAGE_RGB,       "DerYRGB"        },
+    { blur_wrapper,          IMAGE_GRAYSCALE, "BlurGray"       },
+    { blur_wrapper,          IMAGE_RGB,       "BlurRGB"        }
 };
 
 #define NUM_TRANSFORMS (int)(sizeof(TRANSFORMS) / sizeof(TRANSFORMS[0]))
@@ -69,7 +76,8 @@ int main(void) {
     omp_set_num_threads(NUM_THREADS);
     double start = omp_get_wtime();
 
-    // One image per thread at a time -> bounded memory
+    // One image per thread at a time -> bounded memory.
+    // dynamic, 1: a thread that finishes early takes the next image
     #pragma omp parallel for schedule(dynamic, 1)
     for (int i = 0; i < NUM_IMAGES; i++) {
         char input[100];
