@@ -44,3 +44,5 @@ extern int bmp_write(Image* image, const char* outputPath);
 extern int image_flip_horizontal(Image* image, ImageFormat format);
 extern int image_flip_vertical(Image* image, ImageFormat format);
 extern int image_blur(Image* image, ImageFormat format, int kernel_size);
+extern int image_derX(Image* image, ImageFormat format);
+extern int image_derY(Image* image, ImageFormat format);

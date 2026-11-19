@@ -210,41 +210,37 @@ extern int bmp_read(Image* image, const char* input_path) {
     }
 
     // Read pixels
+    // Read pixels (one fread per row)
+    size_t stride = row_size + padding;
+    unsigned char* row = malloc(stride);
+    if (row == NULL) {
+        free(data);
+        fclose(img);
+        puts("Cannot allocate row buffer");
+        return 0;
+    }
+
     for (size_t y = 0; y < height; y++) {
-
-        // Keep internal representation bottom-up
         size_t dest_y = top_down ? (height - 1 - y) : y;
+        // Last row: padding may be missing in some files
+        size_t want = (y == height - 1) ? row_size : stride;
 
-        for (size_t x = 0; x < width; x++) {
-
-            int b = getc(img);
-            int g = getc(img);
-            int r = getc(img);
-
-            if (b == EOF || g == EOF || r == EOF) {
-                free(data);
-                fclose(img);
-                puts("Unexpected end of BMP");
-                return 0;
-            }
-
-            size_t index = (dest_y * width + x) * 3;
-
-            data[index]     = (unsigned char)r;
-            data[index + 1] = (unsigned char)g;
-            data[index + 2] = (unsigned char)b;
+        if (fread(row, 1, want, img) != want) {
+            free(row);
+            free(data);
+            fclose(img);
+            puts("Unexpected end of BMP");
+            return 0;
         }
 
-        // Skip row padding
-        for (size_t p = 0; p < padding; p++) {
-            if (getc(img) == EOF) {
-                free(data);
-                fclose(img);
-                puts("Unexpected end of BMP padding");
-                return 0;
-            }
+        unsigned char* dst = &data[dest_y * width * 3];
+        for (size_t x = 0; x < width; x++) {
+            dst[x * 3]     = row[x * 3 + 2];   // R
+            dst[x * 3 + 1] = row[x * 3 + 1];   // G
+            dst[x * 3 + 2] = row[x * 3];       // B
         }
     }
+    free(row);
 
     image->data = data;
     image->width = (long)width;
@@ -299,7 +295,7 @@ extern int bmp_write(Image* image, const char* outputPath){
     uint64_t palette_size = (image -> channels == IMAGE_GRAYSCALE) ? 1024 : 0;
     uint64_t offset = 54 + palette_size;
     uint64_t image_size = stride * height_;
-    uint64_t file_size = 54 + image_size;
+    uint64_t file_size = offset + image_size;
 
     // File Sz validation
     if(image_size > INT32_MAX || file_size > INT32_MAX){
@@ -340,40 +336,40 @@ extern int bmp_write(Image* image, const char* outputPath){
     }
 
     // Guardar la imagen
-    //Imagenes en grises
+    // Guardar la imagen (one fwrite per row)
+    unsigned char* row = calloc(1, (size_t)stride);   // zeroed: padding stays 0
+    if(row == NULL){
+        fclose(outputImage);
+        puts("Cannot allocate row buffer");
+        return 0;
+    }
+
     if(image -> channels == IMAGE_GRAYSCALE){
-        // Paleta: el indice i corresponde al gris i (B, G, R, reservado)
+        unsigned char palette[1024];
         for(int i = 0; i < 256; i++){
-            putc(i, outputImage);
-            putc(i, outputImage);
-            putc(i, outputImage);
-            putc(0, outputImage);
+            palette[i * 4]     = (unsigned char)i;
+            palette[i * 4 + 1] = (unsigned char)i;
+            palette[i * 4 + 2] = (unsigned char)i;
+            palette[i * 4 + 3] = 0;
         }
+        fwrite(palette, 1, sizeof(palette), outputImage);
 
         for(size_t y = 0; y < (size_t)height_; y++){
-            for(size_t x = 0; x < (size_t)width_; x++){
-                putc(image -> data[y * (size_t)width_ + x], outputImage);
-            }
-            for(size_t p = 0; p < (size_t)padding; p++){
-                putc(0, outputImage);
-            }
+            memcpy(row, &image -> data[y * (size_t)width_], (size_t)width_);
+            fwrite(row, 1, (size_t)stride, outputImage);
         }
-    }
-    
-    // Imagenes a color
-    if(image -> channels == IMAGE_RGB){
+    } else {
         for(size_t y = 0; y < (size_t)height_; y++){
+            const unsigned char* src = &image -> data[y * (size_t)width_ * 3];
             for(size_t x = 0; x < (size_t)width_; x++){
-                size_t i = (y * (size_t)width_ + x) * 3;
-                putc(image -> data[i + 2], outputImage);   // B
-                putc(image -> data[i + 1], outputImage);   // G
-                putc(image -> data[i],     outputImage);   // R
+                row[x * 3]     = src[x * 3 + 2];   // B
+                row[x * 3 + 1] = src[x * 3 + 1];   // G
+                row[x * 3 + 2] = src[x * 3];       // R
             }
-            for(size_t p = 0; p < (size_t)padding; p++){
-                putc(0, outputImage);
-            }
+            fwrite(row, 1, (size_t)stride, outputImage);
         }
     }
+    free(row);
 
     if(ferror(outputImage)){
         fclose(outputImage);
@@ -477,4 +473,77 @@ extern int image_blur(Image* image, ImageFormat format, int kernel_size){
     // I got my head checked
     // By a jumbo jet
     // -- Blur(Song 2)
+}
+
+/*
+ * Image Derivative in X:
+ * Each pixel becomes the absolute difference with
+ * the pixel to its left. First column has no neighbor (0)
+ */
+extern int image_derX(Image* image, ImageFormat format){
+    if(!image_valid(image)) return 0;
+
+    size_t w = (size_t)image -> width;
+    size_t h = (size_t)image -> height;
+    size_t sc = format_channels(image -> channels); // Source channel
+    size_t dc = format_channels(format);    // Destin channel
+
+    unsigned char* out = malloc(w * h * dc);
+    if(out == NULL) return 0;
+
+    unsigned char diff[3];
+    for(size_t y = 0; y < h; y++){
+        for(size_t x = 0; x < w; x++){
+            for(size_t c = 0; c < sc; c++){
+                if(x == 0){
+                    diff[c] = 0;
+                } else {
+                    int a = image -> data[(y * w + x) * sc + c];
+                    int b = image -> data[(y * w + (x - 1)) * sc + c];
+                    diff[c] = (unsigned char)abs(a - b);
+                }
+            }
+            convert_pixel(diff, sc, &out[(y * w + x) * dc], dc);
+        }
+    }
+
+    image_replace(image, out, format);
+    return 1;
+}
+
+/*
+ * Image Derivative in Y:
+ * Each pixel becomes the absolute difference with
+ * the pixel above it. Top row has no neighbor (0).
+ * Memory is bottom-up, so "above" is row y + 1
+ */
+extern int image_derY(Image* image, ImageFormat format){
+    if(!image_valid(image)) return 0;
+
+    size_t w = (size_t)image -> width;
+    size_t h = (size_t)image -> height;
+    size_t sc = format_channels(image -> channels); // Source channel
+    size_t dc = format_channels(format);    // Destin channel
+
+    unsigned char* out = malloc(w * h * dc);
+    if(out == NULL) return 0;
+
+    unsigned char diff[3];
+    for(size_t y = 0; y < h; y++){
+        for(size_t x = 0; x < w; x++){
+            for(size_t c = 0; c < sc; c++){
+                if(y + 1 >= h){
+                    diff[c] = 0;
+                } else {
+                    int a = image -> data[(y * w + x) * sc + c];
+                    int b = image -> data[((y + 1) * w + x) * sc + c];
+                    diff[c] = (unsigned char)abs(a - b);
+                }
+            }
+            convert_pixel(diff, sc, &out[(y * w + x) * dc], dc);
+        }
+    }
+
+    image_replace(image, out, format);
+    return 1;
 }
