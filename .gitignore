@@ -5,3 +5,4 @@ results/
 images/output/
 __cmake_systeminformation/
 build/.cmake/api/v1/query/client-neocmake/
+build-gui/
