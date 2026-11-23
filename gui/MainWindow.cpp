@@ -533,8 +533,9 @@ void MainWindow::processQueue() {
     savedCount = 0;
     failedCount = 0;
 
-    // Images are processed one after another; a failure only affects its own
-    // row. Results go back to the UI thread through queued calls.
+    // Images are processed one after another
+    // A failure only affects its own row. 
+    // Results go back to the UI thread through queued calls.
     worker = QThread::create([this, jobs, outputDir, suffix, options]() {
         for (const Job& job : jobs) {
             int row = job.row;
