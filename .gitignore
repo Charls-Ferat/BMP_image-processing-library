@@ -3,3 +3,4 @@
 results/
 *.bmp
 images/output/
+__cmake_systeminformation/
