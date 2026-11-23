@@ -6,7 +6,7 @@
 
 #define NUM_IMAGES  10
 #define NUM_THREADS 5
-#define BLUR_KERNEL 9   // Same size as the kernel in transformaciones.h
+#define BLUR_KERNEL 9   
 
 typedef int (*TransformFn)(Image*, ImageFormat);
 
@@ -76,8 +76,8 @@ int main(void) {
     omp_set_num_threads(NUM_THREADS);
     double start = omp_get_wtime();
 
-    // One image per thread at a time -> bounded memory.
-    // dynamic, 1: a thread that finishes early takes the next image
+    // One image per thread at a time 
+    // dynamic, 1 thread that finishes early takes the next image
     #pragma omp parallel for schedule(dynamic, 1)
     for (int i = 0; i < NUM_IMAGES; i++) {
         char input[100];
