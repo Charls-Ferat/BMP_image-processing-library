@@ -3,7 +3,7 @@
 #include <QList>
 #include <QString>
 
-// Transformations offered by the C library (include/image.h)
+// Transformations by the image library
 enum class Transformation {
     FlipHorizontal,     // image_flip_horizontal
     FlipVertical,       // image_flip_vertical
@@ -12,7 +12,8 @@ enum class Transformation {
     DerivativeY         // image_derY
 };
 
-// Maps to the library's ImageFormat (IMAGE_RGB / IMAGE_GRAYSCALE)
+// Maps to IMAGE_RGB / IMAGE_GRAYSCALE
+// Or I belioeve so
 enum class ColorMode {
     Rgb,
     Grayscale
@@ -32,7 +33,7 @@ struct ProcessingResult {
 };
 
 // Bridge between the Qt UI and the C library. It only calls the library
-// functions; every transformation is done by the library itself.
+// functions and very transformation is done by the library itself.
 class ImageProcessor {
 public:
     // Checks the file against what bmp_read() accepts. Returns an empty
