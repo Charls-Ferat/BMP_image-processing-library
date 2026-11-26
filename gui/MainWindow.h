@@ -87,9 +87,13 @@ private:
     QLabel* exampleLabel = nullptr;
     QPushButton* processButton = nullptr;
     QPushButton* openFolderButton = nullptr;
+    QLabel* timeLabel = nullptr;
 
-    // Processing runs on one background thread so the window stays responsive
+    // Processing runs on a background thread so the window stays responsive;
+    // inside it, OpenMP processes several images at the same time
     QThread* worker = nullptr;
+    double elapsedSeconds = 0;      // written by the worker, read after it finishes
+    int threadsUsed = 1;
     int totalJobs = 0;
     int savedCount = 0;
     int failedCount = 0;

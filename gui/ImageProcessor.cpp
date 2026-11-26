@@ -1,5 +1,7 @@
 #include "ImageProcessor.h"
 
+#include <QMutex>
+#include <QMutexLocker>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -45,14 +47,23 @@ ImageFormat toLibraryFormat(ColorMode mode) {
 }
 
 // Never returns the path of an existing file, so nothing is overwritten.
-QString uniqueOutputPath(const QString& inputPath, const QString& outputDir,
-                         const QString& suffix) {
+// Returns an empty string if the file cannot be created.
+QString reserveOutputPath(const QString& inputPath, const QString& outputDir,
+                          const QString& suffix) {
+    static QMutex mutex;
+    QMutexLocker locker(&mutex);
+
     QString baseName = QFileInfo(inputPath).completeBaseName() + suffix;
     QDir dir(outputDir);
 
     QString path = dir.filePath(baseName + ".bmp");
     for (int n = 1; QFileInfo::exists(path); ++n) {
         path = dir.filePath(QString("%1_%2.bmp").arg(baseName).arg(n));
+    }
+
+    QFile placeholder(path);
+    if (!placeholder.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+        return QString();
     }
     return path;
 }
@@ -156,16 +167,24 @@ ProcessingResult ImageProcessor::process(const QString& inputPath,
         return result;
     }
 
-    QString outputPath = uniqueOutputPath(inputPath, outputDir, suffix);
-    if (!pathUsableByLibrary(outputPath)) {
-        result.error = "The output path has characters the C library cannot open "
-                       "on this system.";
-        return result;
-    }
-
     Image image = {};
     if (!bmp_read(&image, QFile::encodeName(inputPath).constData())) {
         result.error = "The library could not read the image.";
+        return result;
+    }
+
+    // The name is reserved only now, so a failure above leaves nothing behind
+    QString outputPath = reserveOutputPath(inputPath, outputDir, suffix);
+    if (outputPath.isEmpty()) {
+        image_free(&image);
+        result.error = "Could not create the output file. Check the folder permissions.";
+        return result;
+    }
+    if (!pathUsableByLibrary(outputPath)) {
+        QFile::remove(outputPath);
+        image_free(&image);
+        result.error = "The output path has characters the C library cannot open "
+                       "on this system.";
         return result;
     }
 

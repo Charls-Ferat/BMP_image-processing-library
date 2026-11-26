@@ -32,6 +32,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <omp.h>
 #include <algorithm>
 #include <functional>
 
@@ -237,7 +238,11 @@ QWidget* MainWindow::createSettingsPanel() {
     processButton->setObjectName("primary");
     processButton->setMinimumHeight(38);
     openFolderButton = new QPushButton("Open Output Folder");
+    timeLabel = new QLabel;
+    timeLabel->setObjectName("muted");
+    timeLabel->setWordWrap(true);
     layout->addWidget(processButton);
+    layout->addWidget(timeLabel);
     layout->addWidget(openFolderButton);
     layout->addStretch();
 
@@ -533,11 +538,21 @@ void MainWindow::processQueue() {
     savedCount = 0;
     failedCount = 0;
 
-    // Images are processed one after another
-    // A failure only affects its own row. 
-    // Results go back to the UI thread through queued calls.
+    // One image per thread at a time, scheduled dynamically: a thread that
+    // finishes early takes the next image (same scheme as tests/bench_mark.c).
+    // A failure only affects its own row. Results go back to the UI thread
+    // through queued calls.
+    threadsUsed = std::max(1, std::min(omp_get_max_threads(), totalJobs));
+    elapsedSeconds = 0;
+    timeLabel->setText("Processing...");
+
     worker = QThread::create([this, jobs, outputDir, suffix, options]() {
-        for (const Job& job : jobs) {
+        const int count = static_cast<int>(jobs.size());
+        double start = omp_get_wtime();
+
+        #pragma omp parallel for schedule(dynamic, 1) num_threads(threadsUsed)
+        for (int i = 0; i < count; ++i) {
+            const Job& job = jobs.at(i);
             int row = job.row;
             QMetaObject::invokeMethod(this, [this, row]() {
                 setRowStatus(row, "Processing", QString(), kBlue);
@@ -550,7 +565,10 @@ void MainWindow::processQueue() {
                 showResult(row, result);
             }, Qt::QueuedConnection);
         }
+
+        elapsedSeconds = omp_get_wtime() - start;
     });
+    
     worker->setParent(this);
     connect(worker, &QThread::finished, this, &MainWindow::onProcessingFinished);
     worker->start();
@@ -563,7 +581,13 @@ void MainWindow::onProcessingFinished() {
     worker->deleteLater();
     worker = nullptr;
 
-    QString message = QString("Finished: %1 saved, %2 failed.").arg(savedCount).arg(failedCount);
+    QString timeText = QString("Processing time: %1 s (%2 image(s), %3 thread(s))")
+                           .arg(elapsedSeconds, 0, 'f', 3).arg(totalJobs).arg(threadsUsed);
+    timeLabel->setText(timeText);
+
+    QString message = QString("Finished: %1 saved, %2 failed in %3 s.")
+                          .arg(savedCount).arg(failedCount).arg(elapsedSeconds, 0, 'f', 3);
+    
     if (failedCount > 0) {
         message += " Select a failed row to read the error.";
     }

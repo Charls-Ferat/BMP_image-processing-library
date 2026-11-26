@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(OpenMP REQUIRED COMPONENTS CXX)
 
 # Original C library, built untouched from src/ and include/
 add_library(bmp_image STATIC src/image.c)
@@ -23,4 +24,4 @@ add_executable(bmp_gui WIN32 MACOSX_BUNDLE
     gui/ImageProcessor.h
 )
 set_target_properties(bmp_gui PROPERTIES OUTPUT_NAME "BMPImageProcessor")
-target_link_libraries(bmp_gui PRIVATE bmp_image Qt6::Widgets)
+target_link_libraries(bmp_gui PRIVATE bmp_image Qt6::Widgets OpenMP::OpenMP_CXX)
