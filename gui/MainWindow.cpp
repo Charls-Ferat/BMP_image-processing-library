@@ -9,6 +9,7 @@
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -22,7 +23,10 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QResizeEvent>
 #include <QScreen>
+#include <QScrollArea>
+#include <QSplitter>
 #include <QSet>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -43,64 +47,140 @@ const QColor kGreen(0x15, 0x80, 0x3d);
 const QColor kRed(0xb9, 0x1c, 0x1c);
 const QColor kGray(0x47, 0x55, 0x69);
 
+}  // namespace
+
+class OriginalPreview : public QLabel {
+public:
+    OriginalPreview() {
+        setObjectName("preview");
+        setAlignment(Qt::AlignCenter);
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        setMinimumHeight(64);
+        showImage({}, "Select an image to preview");
+    }
+
+    void showImage(const QImage& image, const QString& placeholder) {
+        source = QPixmap::fromImage(image);
+        if (source.isNull()) {
+            setText(placeholder);
+        } else {
+            updatePixmap();
+        }
+    }
+
+protected:
+    void resizeEvent(QResizeEvent* event) override {
+        QLabel::resizeEvent(event);
+        if (!source.isNull()) {
+            updatePixmap();
+        }
+    }
+
+private:
+    void updatePixmap() {
+        const QSize available = contentsRect().size();
+        const QSize target(qMin(source.width(), available.width()),
+                           qMin(source.height(), available.height()));
+        setPixmap(source.scaled(target, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
+
+    QPixmap source;
+};
+
+namespace {
+
 const char* const kStyleSheet = R"(
-QWidget { background: #f3f6fb; color: #1e293b; font-size: 13px; }
-QLabel, QCheckBox { background: transparent; }
-QLabel#banner { background: #2563eb; color: #ffffff; font-size: 18px; font-weight: 600; padding: 12px 18px; }
-QLabel#muted { color: #64748b; font-size: 12px; }
-QLabel#dropHint { background: #eaf1ff; color: #1d4ed8; border: 2px dashed #93b4f5; border-radius: 8px; font-size: 16px; }
-QLabel#preview { background: #e6ecf6; }
-
-QGroupBox { background: #ffffff; border: 1px solid #d5deec; border-radius: 6px; margin-top: 12px; padding: 14px 10px 10px 10px; font-weight: 600; }
-QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #1d4ed8; background: #f3f6fb; }
-
-QPushButton { background: #ffffff; color: #1e3a8a; border: 1px solid #b6c4dc; border-radius: 5px; padding: 6px 14px; }
-QPushButton:hover { background: #e8f0fe; }
-QPushButton:pressed { background: #d6e4fd; }
-QPushButton:disabled { background: #eef2f8; color: #94a3b8; border-color: #dbe3f0; }
-QPushButton#primary { background: #2563eb; color: #ffffff; border: 1px solid #1d4ed8; font-weight: 600; }
-QPushButton#primary:hover { background: #1d4ed8; }
-QPushButton#primary:pressed { background: #1e40af; }
-QPushButton#primary:disabled { background: #9db8f0; border-color: #9db8f0; color: #ffffff; }
-
-QLineEdit, QSpinBox, QComboBox { background: #ffffff; border: 1px solid #b6c4dc; border-radius: 4px; padding: 4px 6px; selection-background-color: #2563eb; selection-color: #ffffff; }
-QLineEdit:focus, QSpinBox:focus, QComboBox:focus { border: 1px solid #2563eb; }
-QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled { background: #eef2f8; color: #94a3b8; }
-QComboBox QAbstractItemView { background: #ffffff; selection-background-color: #2563eb; selection-color: #ffffff; }
-
-QTableWidget { background: #ffffff; alternate-background-color: #f7f9fd; border: 1px solid #d5deec; border-radius: 6px; selection-background-color: #dbe7fd; selection-color: #1e3a8a; }
-QTableWidget::item { padding: 4px; }
-QHeaderView::section { background: #2563eb; color: #ffffff; padding: 6px; border: none; font-weight: 600; }
-
-QStatusBar { background: #ffffff; border-top: 1px solid #d5deec; }
-QToolTip { background: #1e3a8a; color: #ffffff; border: none; padding: 4px; }
+QMainWindow, QWidget#workspace { background: #f4f5f7; color: #202832; }
+QLabel#sectionTitle { font-weight: 600; }
+QLabel#muted, QLabel#dropHint { color: #4b5969; }
+QLabel#preview, QLabel#dropHint { background: #e8ebef; border: 1px solid #cbd2da; }
+QGroupBox { font-weight: 600; margin-top: 0.8em; padding-top: 0.5em; }
+QGroupBox::title { subcontrol-origin: margin; left: 8px; }
+QPushButton { padding: 4px 9px; }
+QPushButton#primary:enabled { background: #24558a; color: white; border: 1px solid #1e4977; padding: 6px 9px; }
+QPushButton#primary:hover { background: #1e4977; }
+QPushButton#primary:focus { border: 2px solid #152c43; padding: 5px 8px; }
+QHeaderView::section { background: #e6eaf0; color: #263340; padding: 5px; border: 0; border-bottom: 1px solid #cbd2da; font-weight: 600; }
+QSplitter::handle { background: #cbd2da; }
+QSplitter::handle:hover { background: #6586a6; }
+QFrame#timing { background: #e9edf2; border-top: 1px solid #cbd2da; }
+QStatusBar { border-top: 1px solid #cbd2da; }
 )";
 
 }  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("BMP Image Processor");
-    resize(1040, 640);
-    setMinimumSize(880, 540);
+    resize(1100, 740);
     setAcceptDrops(true);
     setStyleSheet(kStyleSheet);
 
     auto* central = new QWidget;
+    central->setObjectName("workspace");
     auto* outer = new QVBoxLayout(central);
-    outer->setContentsMargins(0, 0, 0, 0);
-    outer->setSpacing(0);
+    outer->setContentsMargins(12, 12, 12, 0);
+    outer->setSpacing(8);
 
-    auto* banner = new QLabel("BMP Image Processor");
-    banner->setObjectName("banner");
-    outer->addWidget(banner);
+    workspaceSplitter = new QSplitter(Qt::Horizontal);
+    workspaceSplitter->setChildrenCollapsible(false);
+    workspaceSplitter->setHandleWidth(4);
 
-    auto* body = new QHBoxLayout;
-    body->setContentsMargins(16, 16, 16, 16);
-    body->setSpacing(16);
-    body->addLayout(createQueuePanel(), 1);
-    body->addWidget(createSettingsPanel());
-    outer->addLayout(body, 1);
+    auto* imageWorkspace = new QSplitter(Qt::Vertical);
+    imageWorkspace->setChildrenCollapsible(false);
+    imageWorkspace->setHandleWidth(4);
+    auto* queuePanel = new QWidget;
+    queuePanel->setLayout(createQueuePanel());
+    imageWorkspace->addWidget(queuePanel);
 
+    auto* previewPanel = new QWidget;
+    auto* previewLayout = new QVBoxLayout(previewPanel);
+    previewLayout->setContentsMargins(0, 6, 0, 0);
+    auto* previewHeader = new QHBoxLayout;
+    auto* previewTitle = new QLabel("Original preview");
+    previewTitle->setObjectName("sectionTitle");
+    previewHeader->addWidget(previewTitle, 1);
+    previewButton = new QPushButton("Preview Original");
+    previewButton->setToolTip("Open the original in a separate window");
+    previewHeader->addWidget(previewButton);
+    previewLayout->addLayout(previewHeader);
+    originalPreview = new OriginalPreview;
+    previewLayout->addWidget(originalPreview, 1);
+    previewDetails = new QLabel;
+    previewDetails->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    previewDetails->setObjectName("muted");
+    previewLayout->addWidget(previewDetails);
+    imageWorkspace->addWidget(previewPanel);
+    imageWorkspace->setStretchFactor(0, 2);
+    imageWorkspace->setStretchFactor(1, 3);
+
+    workspaceSplitter->addWidget(imageWorkspace);
+    workspaceSplitter->addWidget(createSettingsPanel());
+    workspaceSplitter->setStretchFactor(0, 1);
+    workspaceSplitter->setStretchFactor(1, 0);
+    workspaceSplitter->setSizes({740, 320});
+    outer->addWidget(workspaceSplitter, 1);
+
+    auto* timing = new QFrame;
+    timing->setObjectName("timing");
+    auto* timingLayout = new QHBoxLayout(timing);
+    timingLayout->setContentsMargins(12, 6, 12, 6);
+    timingLayout->setSpacing(16);
+    timingLayout->addWidget(new QLabel("Batch elapsed"));
+    timeLabel = new QLabel(QStringLiteral("—"));
+    timeLabel->setMinimumWidth(112);
+    QFont timeFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    timeFont.setPointSize(23);
+    timeFont.setBold(true);
+    timeLabel->setFont(timeFont);
+    timingLayout->addWidget(timeLabel);
+    timingDetails = new QLabel("Ready");
+    timingDetails->setObjectName("muted");
+    timingDetails->setWordWrap(true);
+    timingLayout->addWidget(timingDetails, 1);
+    outer->addWidget(timing);
+
+    connect(previewButton, &QPushButton::clicked, this, &MainWindow::previewSelected);
+    connect(table, &QTableWidget::itemSelectionChanged, this, &MainWindow::updatePreview);
     setCentralWidget(central);
     statusBar()->showMessage("Drag and drop BMP files into the window to start.");
     updateControls();
@@ -108,6 +188,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
 QLayout* MainWindow::createQueuePanel() {
     auto* layout = new QVBoxLayout;
+
+    layout->setContentsMargins(0, 0, 0, 6);
+    auto* title = new QLabel("Image queue");
+    title->setObjectName("sectionTitle");
+    layout->addWidget(title);
 
     // Empty state and queue share the same space
     queueStack = new QStackedWidget;
@@ -131,23 +216,19 @@ QLayout* MainWindow::createQueuePanel() {
     table->setColumnWidth(FileColumn, 220);
     queueStack->addWidget(table);
 
-    layout->addWidget(queueStack, 1);
-
     auto* buttons = new QHBoxLayout;
     addButton = new QPushButton("Add Images...");
-    previewButton = new QPushButton("Preview Original");
     removeButton = new QPushButton("Remove Selected");
     removeButton->setShortcut(QKeySequence::Delete);
     clearButton = new QPushButton("Clear Queue");
     buttons->addWidget(addButton);
-    buttons->addWidget(previewButton);
     buttons->addStretch();
     buttons->addWidget(removeButton);
     buttons->addWidget(clearButton);
     layout->addLayout(buttons);
+    layout->addWidget(queueStack, 1);
 
     connect(addButton, &QPushButton::clicked, this, &MainWindow::chooseImages);
-    connect(previewButton, &QPushButton::clicked, this, &MainWindow::previewSelected);
     connect(removeButton, &QPushButton::clicked, this, &MainWindow::removeSelected);
     connect(clearButton, &QPushButton::clicked, this, &MainWindow::clearQueue);
     connect(table, &QTableWidget::cellDoubleClicked, this, &MainWindow::previewSelected);
@@ -159,10 +240,22 @@ QLayout* MainWindow::createQueuePanel() {
 
 QWidget* MainWindow::createSettingsPanel() {
     auto* panel = new QWidget;
-    panel->setFixedWidth(310);
-    auto* layout = new QVBoxLayout(panel);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(12);
+    auto* sidebar = new QVBoxLayout(panel);
+    sidebar->setContentsMargins(8, 0, 0, 0);
+    auto* heading = new QLabel("Processing");
+    heading->setObjectName("sectionTitle");
+    sidebar->addWidget(heading);
+
+    auto* scroll = new QScrollArea;
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setMinimumHeight(75);
+    auto* settings = new QWidget;
+    auto* layout = new QVBoxLayout(settings);
+    layout->setContentsMargins(0, 0, 8, 0);
+    layout->setSpacing(8);
+    scroll->setWidget(settings);
+    sidebar->addWidget(scroll, 1);
 
     // Transformations
     transformGroup = new QGroupBox("Transformations");
@@ -238,12 +331,8 @@ QWidget* MainWindow::createSettingsPanel() {
     processButton->setObjectName("primary");
     processButton->setMinimumHeight(38);
     openFolderButton = new QPushButton("Open Output Folder");
-    timeLabel = new QLabel;
-    timeLabel->setObjectName("muted");
-    timeLabel->setWordWrap(true);
-    layout->addWidget(processButton);
-    layout->addWidget(timeLabel);
-    layout->addWidget(openFolderButton);
+    sidebar->addWidget(processButton);
+    sidebar->addWidget(openFolderButton);
     layout->addStretch();
 
     connect(browseButton, &QPushButton::clicked, this, &MainWindow::chooseOutputFolder);
@@ -255,6 +344,39 @@ QWidget* MainWindow::createSettingsPanel() {
     updateExample();
 
     return panel;
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event) {
+    QMainWindow::resizeEvent(event);
+    const Qt::Orientation orientation = event->size().width() < 850
+        ? Qt::Vertical : Qt::Horizontal;
+    if (workspaceSplitter && workspaceSplitter->orientation() != orientation) {
+        workspaceSplitter->setOrientation(orientation);
+        workspaceSplitter->setSizes(orientation == Qt::Horizontal
+            ? QList<int>{event->size().width() - 330, 306}
+            : QList<int>{event->size().height() * 3 / 5, event->size().height() / 3});
+    }
+}
+
+void MainWindow::updatePreview() {
+    const auto rows = table->selectionModel()->selectedRows();
+    previewDetails->clear();
+    previewDetails->setToolTip(QString());
+    if (rows.isEmpty()) {
+        originalPreview->showImage({}, "Select an image to preview");
+        return;
+    }
+
+    const QString path = table->item(rows.first().row(), FileColumn)
+                             ->data(Qt::UserRole).toString();
+    const QImage image(path);
+    originalPreview->showImage(image, "The original could not be opened");
+    if (!image.isNull()) {
+        previewDetails->setText(QString("%1  /  %2 × %3")
+                                    .arg(QFileInfo(path).fileName())
+                                    .arg(image.width()).arg(image.height()));
+    }
+    previewDetails->setToolTip(path);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
@@ -544,7 +666,9 @@ void MainWindow::processQueue() {
     // through queued calls.
     threadsUsed = std::max(1, std::min(omp_get_max_threads(), totalJobs));
     elapsedSeconds = 0;
-    timeLabel->setText("Processing...");
+    timeLabel->setText(QStringLiteral("—"));
+    timingDetails->setText(QString("Processing…  %1 image(s) · %2 thread(s) requested")
+                               .arg(totalJobs).arg(threadsUsed));
 
     worker = QThread::create([this, jobs, outputDir, suffix, options]() {
         const int count = static_cast<int>(jobs.size());
@@ -581,9 +705,9 @@ void MainWindow::onProcessingFinished() {
     worker->deleteLater();
     worker = nullptr;
 
-    QString timeText = QString("Processing time: %1 s (%2 image(s), %3 thread(s))")
-                           .arg(elapsedSeconds, 0, 'f', 3).arg(totalJobs).arg(threadsUsed);
-    timeLabel->setText(timeText);
+    timeLabel->setText(QString("%1 s").arg(elapsedSeconds, 0, 'f', 3));
+    timingDetails->setText(QString("%1 image(s) · %2 thread(s) requested")
+                               .arg(totalJobs).arg(threadsUsed));
 
     QString message = QString("Finished: %1 saved, %2 failed in %3 s.")
                           .arg(savedCount).arg(failedCount).arg(elapsedSeconds, 0, 'f', 3);

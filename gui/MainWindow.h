@@ -6,6 +6,7 @@
 
 #include "ImageProcessor.h"
 
+class OriginalPreview;
 class QCheckBox;
 class QCloseEvent;
 class QColor;
@@ -17,7 +18,9 @@ class QLabel;
 class QLayout;
 class QLineEdit;
 class QPushButton;
+class QResizeEvent;
 class QSpinBox;
+class QSplitter;
 class QStackedWidget;
 class QTableWidget;
 class QThread;
@@ -31,6 +34,7 @@ public:
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
 
 private slots:
@@ -45,6 +49,7 @@ private slots:
     void updateControls();
     void updateExample();
     void showSelectedMessage();
+    void updatePreview();
 
 private:
     enum Column { FileColumn, ModeColumn, StatusColumn, MessageColumn };
@@ -65,6 +70,10 @@ private:
                       const QColor& color);
     void showResult(int row, const ProcessingResult& result);
     ProcessingOptions currentOptions() const;
+
+    QSplitter* workspaceSplitter = nullptr;
+    OriginalPreview* originalPreview = nullptr;
+    QLabel* previewDetails = nullptr;
 
     // Queue
     QStackedWidget* queueStack = nullptr;
@@ -88,6 +97,7 @@ private:
     QPushButton* processButton = nullptr;
     QPushButton* openFolderButton = nullptr;
     QLabel* timeLabel = nullptr;
+    QLabel* timingDetails = nullptr;
 
     // Processing runs on a background thread so the window stays responsive;
     // inside it, OpenMP processes several images at the same time
