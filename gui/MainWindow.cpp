@@ -91,7 +91,7 @@ namespace {
 
 const char* const kStyleSheet = R"(
 QMainWindow, QWidget#workspace { background: #f4f5f7; color: #202832; }
-QLabel#sectionTitle { font-weight: 600; }
+QLabel#sectionTitle {background-color: #24558a; color: #ffffff; font-weight: 600; padding: 5px 8px;}
 QLabel#muted, QLabel#dropHint { color: #4b5969; }
 QLabel#preview, QLabel#dropHint { background: #e8ebef; border: 1px solid #cbd2da; }
 QGroupBox { font-weight: 600; margin-top: 0.8em; padding-top: 0.5em; }
@@ -139,7 +139,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* previewTitle = new QLabel("Original preview");
     previewTitle->setObjectName("sectionTitle");
     previewHeader->addWidget(previewTitle, 1);
-    previewButton = new QPushButton("Preview Original");
+    previewButton = new QPushButton("Open Preview");
     previewButton->setToolTip("Open the original in a separate window");
     previewHeader->addWidget(previewButton);
     previewLayout->addLayout(previewHeader);
@@ -692,7 +692,7 @@ void MainWindow::processQueue() {
 
         elapsedSeconds = omp_get_wtime() - start;
     });
-    
+
     worker->setParent(this);
     connect(worker, &QThread::finished, this, &MainWindow::onProcessingFinished);
     worker->start();
@@ -711,7 +711,7 @@ void MainWindow::onProcessingFinished() {
 
     QString message = QString("Finished: %1 saved, %2 failed in %3 s.")
                           .arg(savedCount).arg(failedCount).arg(elapsedSeconds, 0, 'f', 3);
-    
+
     if (failedCount > 0) {
         message += " Select a failed row to read the error.";
     }
